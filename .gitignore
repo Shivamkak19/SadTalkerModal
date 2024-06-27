@@ -161,6 +161,7 @@ cython_debug/
 
 examples/results/*
 gfpgan/*
+scripts/gfpgan/*
 checkpoints/*
 assets/*
 results/*
@@ -172,3 +173,5 @@ checkpoints
 
 # Mac
 .DS_Store
+
+# Ignore model weights
