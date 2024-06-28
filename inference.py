@@ -13,7 +13,7 @@ from src.generate_facerender_batch import get_facerender_data
 from src.utils.init_path import init_path
 
 def main(args):
-    #torch.backends.cudnn.enabled = False
+    torch.backends.cudnn.enabled = True
 
     pic_path = args.source_image
     audio_path = args.driven_audio
@@ -137,7 +137,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     args.device = "cuda"
-    # Hard coding args.device = cuda
     # if torch.cuda.is_available() and not args.cpu:
     # else:
     #     args.device = "cpu"

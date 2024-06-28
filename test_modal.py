@@ -1,16 +1,20 @@
 import requests
 
-url = "https://shivamkak19--sadtalker-deployment-run-sadtalker-dev.modal.run"
 
-# Define the payload
-payload = {
-    "mp3URL": "https://storage.googleapis.com/storm-user-data/results_7c4b9b68-d03a-4061-aac2-676f6fb9fd96_audios_6.mp3",  # Replace with the actual URL
-    "imageURL": "https://storage.googleapis.com/storm-user-data/buffun.png"  # Replace with the actual URL
-}
+def query_modal_sadtalker(mp3_url, img_url):
 
-# Send the POST request
-response = requests.post(url, params=payload)
+    modal_url = "https://shivamkak19--sadtalker-deployment-run-sadtalker.modal.run"
+    test_url = "https://shivamkak19--sadtalker-deployment-run-sadtalker-dev.modal.run"
+    payload = {
+        "mp3URL": mp3_url,  
+        "imageURL": img_url
+    }
 
-# Print the response
-print(response.status_code)
-print(response.json()) 
+    response = requests.post(test_url, params=payload)
+    return response.json()["sync_url"]
+
+
+
+test_mp3 = "https://storage.googleapis.com/storm-user-data/results_7c4b9b68-d03a-4061-aac2-676f6fb9fd96_audios_6.mp3"
+test_img = "https://storage.googleapis.com/storm-user-data/buffun.png"
+print(query_modal_sadtalker(mp3_url= test_mp3, img_url= test_img))

@@ -1,25 +1,44 @@
 import modal
 from pydantic import BaseModel
 import urllib
-import uuid
 import os
 import subprocess
 import io
 from pydub import AudioSegment
 from datetime import timedelta
-from credentials import storage_client as storage, firestore_client as db
+from google.cloud import storage, firestore
 from dotenv import load_dotenv
-import torch
 
 # Load environment variables from .env file
 load_dotenv()
 
 PRIVATE_BUCKET_NAME = "storm-user-private"
 PUBLIC_BUCKET_NAME = "storm-user-data"
-DUMMY_SYNC_MP4 = "https://storage.googleapis.com/storm-user-data/syncs/04e406a0-5444-41d2-851f-51d94e9ccdf7.mp4"
 
 # Define the Docker image from the Dockerfile
-docker_image = modal.Image.from_dockerfile("Dockerfile")
+image = modal.Image.debian_slim()
+image = image.run_commands([
+    "apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    wget \
+    git \
+    build-essential \
+    libgl1 \
+    libssl-dev \
+    libffi-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    zlib1g-dev \
+    libjpeg-dev \
+    libpng-dev \
+    unzip \
+    ffmpeg",
+    "pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 torchaudio==0.12.1 --extra-index-url https://download.pytorch.org/whl/cu113",
+    "pip install dlib-bin",
+    "pip install git+https://github.com/TencentARC/GFPGAN",
+    "pip install -r requirements.txt",  # Adjust the path to your requirements.txt
+    "pip install google-cloud-storage google-cloud-firestore google-auth python-dotenv"
+])
 
 # Define the Modal function
 app = modal.App("sadtalker-deployment")
@@ -28,7 +47,7 @@ class LipSyncRequest(BaseModel):
     mp3URL: str
     imageURL: str
 
-@app.function(image=docker_image, gpu="H100:8")
+@app.function(image=image, gpu="A100")
 @modal.web_endpoint(method="POST")
 def run_sadtalker(mp3URL: str, imageURL: str):
     print("***", "reached modal")
@@ -64,12 +83,6 @@ def run_sadtalker(mp3URL: str, imageURL: str):
 
     print("*** Finished converting")
 
-    # Check CUDA availability
-    if torch.cuda.is_available():
-        print("*** CUDA is available")
-    else:
-        print("*** CUDA is not available")
-
     # Construct the command for SadTalker
     sadtalker_command = [
         "python3", "inference.py",
@@ -97,33 +110,31 @@ def run_sadtalker(mp3URL: str, imageURL: str):
             file_path = os.path.join(result_dir, file_name)
 
             print("check file path:", file_path)
-            unique_path = upload_file_to_gcp(file_path, PUBLIC_BUCKET_NAME)
+            upload_file_to_gcp(file_path, PUBLIC_BUCKET_NAME)
             os.remove(file_path)
             print(f"Deleted local file: {file_path}")
-            signed_url = get_signed_gcp_url(unique_path, PUBLIC_BUCKET_NAME)
+            signed_url = get_signed_gcp_url(file_name, PUBLIC_BUCKET_NAME)
             signed_urls.append(signed_url)
     
-    if not signed_urls:
-        return {"sync_url": DUMMY_SYNC_MP4}
-    else:
-        return {"sync_url": signed_urls[0]}
+    return {"urls": signed_urls, "stdout": result.stdout, "stderr": result.stderr}
+
 
 def upload_file_to_gcp(file_name, bucket_name):
     print("Uploading file to GCP")
-    bucket = storage.bucket(bucket_name)
-
-    unique_path = f"syncs/{uuid.uuid4()}.mp4"
-    blob = bucket.blob(unique_path)
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(file_name)
     blob.upload_from_filename(file_name)
     print(f"File {file_name} uploaded to {bucket_name}")
 
-    return unique_path
 
 def get_signed_gcp_url(file_name, bucket_name, expiration=timedelta(seconds=3600)):
     print("Getting signed view URL")
-    bucket = storage.bucket(bucket_name)
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
     blob = bucket.blob(file_name)
     return blob.generate_signed_url(expiration, method="GET")
+
 
 # Entry point to run the Modal function
 if __name__ == "__main__":
